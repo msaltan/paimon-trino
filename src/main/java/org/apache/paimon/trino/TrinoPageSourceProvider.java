@@ -18,6 +18,7 @@
 
 package org.apache.paimon.trino;
 
+import io.trino.plugin.base.metrics.FileFormatDataSourceStats;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.deletionvectors.DeletionVector;
 import org.apache.paimon.fileindex.FileIndexPredicate;
@@ -48,7 +49,7 @@ import io.trino.orc.OrcReader;
 import io.trino.orc.OrcReaderOptions;
 import io.trino.orc.OrcRecordReader;
 import io.trino.orc.TupleDomainOrcPredicate;
-import io.trino.plugin.hive.FileFormatDataSourceStats;
+//--ms-- import io.trino.plugin.hive.FileFormatDataSourceStats;
 import io.trino.plugin.hive.orc.OrcPageSource;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPageSource;
