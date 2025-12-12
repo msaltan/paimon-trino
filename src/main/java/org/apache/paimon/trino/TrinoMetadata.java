@@ -1,4 +1,4 @@
- /*
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -241,20 +241,12 @@ public class TrinoMetadata implements ConnectorMetadata {
     }
 
     @Override
-    public ConnectorMergeTableHandle beginMerge(
-            ConnectorSession session, ConnectorTableHandle tableHandle,Map<Integer, Collection<ColumnHandle>> updateCaseColumns, RetryMode retryMode) {
+    public ConnectorMergeTableHandle beginMerge(ConnectorSession session, ConnectorTableHandle tableHandle, Map<Integer, Collection<ColumnHandle>> updateCaseColumns, RetryMode retryMode) {
         return new TrinoMergeTableHandle((TrinoTableHandle) tableHandle);
     }
 
-
-
     @Override
-    public void finishMerge(
-            ConnectorSession session,
-            ConnectorMergeTableHandle mergeTableHandle,
-            List<ConnectorTableHandle> sourceTableHandles,
-            Collection<Slice> fragments,
-            Collection<ComputedStatistics> computedStatistics) {
+    public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, List<ConnectorTableHandle> sourceTableHandles, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics) {
         commit(session, (TrinoTableHandle) mergeTableHandle.getTableHandle(), fragments);
     }
 
@@ -395,10 +387,6 @@ public class TrinoMetadata implements ConnectorMetadata {
         return getTableHandle(session, tableName, dynamicOptions);
     }
 
-    /*ms--@Override
-    public TrinoTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName) {
-        return getTableHandle(session, tableName, Collections.emptyMap());
-    }*/
     public TrinoTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName) {
         return getTableHandle(session, tableName, Collections.emptyMap());
     }
@@ -582,10 +570,9 @@ public class TrinoMetadata implements ConnectorMetadata {
                                 Function.identity(),
                                 table -> getTableHandle(session, table).columnMetadatas(catalog)));
     }
-    // ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column, ColumnPosition position
+
     @Override
-    public void addColumn(
-            ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column, ColumnPosition position) {
+    public void addColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column, ColumnPosition position) {
         TrinoTableHandle trinoTableHandle = (TrinoTableHandle) tableHandle;
         Identifier identifier =
                 new Identifier(trinoTableHandle.getSchemaName(), trinoTableHandle.getTableName());
@@ -603,11 +590,7 @@ public class TrinoMetadata implements ConnectorMetadata {
     }
 
     @Override
-    public void renameColumn(
-            ConnectorSession session,
-            ConnectorTableHandle tableHandle,
-            ColumnHandle source,
-            String target) {
+    public void renameColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle source, String target) {
         TrinoTableHandle trinoTableHandle = (TrinoTableHandle) tableHandle;
         Identifier identifier =
                 new Identifier(trinoTableHandle.getSchemaName(), trinoTableHandle.getTableName());
@@ -727,4 +710,3 @@ public class TrinoMetadata implements ConnectorMetadata {
         return Optional.of(new LimitApplicationResult<>(table, false, false));
     }
 }
-
