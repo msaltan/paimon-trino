@@ -1,4 +1,4 @@
-/*
+ /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,6 +18,7 @@
 
 package org.apache.paimon.trino;
 
+import io.trino.spi.connector.*;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.Identifier;
@@ -39,29 +40,6 @@ import org.apache.paimon.utils.StringUtils;
 
 import io.airlift.slice.Slice;
 import io.trino.spi.TrinoException;
-import io.trino.spi.connector.Assignment;
-import io.trino.spi.connector.ColumnHandle;
-import io.trino.spi.connector.ColumnMetadata;
-import io.trino.spi.connector.ConnectorInsertTableHandle;
-import io.trino.spi.connector.ConnectorMergeTableHandle;
-import io.trino.spi.connector.ConnectorMetadata;
-import io.trino.spi.connector.ConnectorOutputMetadata;
-import io.trino.spi.connector.ConnectorOutputTableHandle;
-import io.trino.spi.connector.ConnectorPartitioningHandle;
-import io.trino.spi.connector.ConnectorSession;
-import io.trino.spi.connector.ConnectorTableHandle;
-import io.trino.spi.connector.ConnectorTableLayout;
-import io.trino.spi.connector.ConnectorTableMetadata;
-import io.trino.spi.connector.ConnectorTableProperties;
-import io.trino.spi.connector.ConnectorTableVersion;
-import io.trino.spi.connector.Constraint;
-import io.trino.spi.connector.ConstraintApplicationResult;
-import io.trino.spi.connector.LimitApplicationResult;
-import io.trino.spi.connector.ProjectionApplicationResult;
-import io.trino.spi.connector.RetryMode;
-import io.trino.spi.connector.RowChangeParadigm;
-import io.trino.spi.connector.SchemaTableName;
-import io.trino.spi.connector.SchemaTablePrefix;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.security.TrinoPrincipal;
@@ -145,8 +123,8 @@ public class TrinoMetadata implements ConnectorMetadata {
             ConnectorSession session,
             ConnectorTableMetadata tableMetadata,
             Optional<ConnectorTableLayout> layout,
-            RetryMode retryMode) {
-        createTable(session, tableMetadata, false);
+            RetryMode retryMode, boolean replace) {
+        createTable(session, tableMetadata, SaveMode.FAIL);
         return getTableHandle(session, tableMetadata.getTable(), Collections.emptyMap());
     }
 
@@ -175,6 +153,7 @@ public class TrinoMetadata implements ConnectorMetadata {
     public Optional<ConnectorOutputMetadata> finishInsert(
             ConnectorSession session,
             ConnectorInsertTableHandle insertHandle,
+            List<ConnectorTableHandle> sourceTableHandles,
             Collection<Slice> fragments,
             Collection<ComputedStatistics> computedStatistics) {
         return commit(session, (TrinoTableHandle) insertHandle, fragments);
@@ -263,14 +242,17 @@ public class TrinoMetadata implements ConnectorMetadata {
 
     @Override
     public ConnectorMergeTableHandle beginMerge(
-            ConnectorSession session, ConnectorTableHandle tableHandle, RetryMode retryMode) {
+            ConnectorSession session, ConnectorTableHandle tableHandle,Map<Integer, Collection<ColumnHandle>> updateCaseColumns, RetryMode retryMode) {
         return new TrinoMergeTableHandle((TrinoTableHandle) tableHandle);
     }
+
+
 
     @Override
     public void finishMerge(
             ConnectorSession session,
             ConnectorMergeTableHandle mergeTableHandle,
+            List<ConnectorTableHandle> sourceTableHandles,
             Collection<Slice> fragments,
             Collection<ComputedStatistics> computedStatistics) {
         commit(session, (TrinoTableHandle) mergeTableHandle.getTableHandle(), fragments);
@@ -413,7 +395,10 @@ public class TrinoMetadata implements ConnectorMetadata {
         return getTableHandle(session, tableName, dynamicOptions);
     }
 
-    @Override
+    /*ms--@Override
+    public TrinoTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName) {
+        return getTableHandle(session, tableName, Collections.emptyMap());
+    }*/
     public TrinoTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName) {
         return getTableHandle(session, tableName, Collections.emptyMap());
     }
@@ -494,7 +479,7 @@ public class TrinoMetadata implements ConnectorMetadata {
     public void createTable(
             ConnectorSession session,
             ConnectorTableMetadata tableMetadata,
-            boolean ignoreExisting) {
+            SaveMode saveMode) {
         SchemaTableName table = tableMetadata.getTable();
         Identifier identifier = Identifier.create(table.getSchemaName(), table.getTableName());
 
@@ -597,10 +582,10 @@ public class TrinoMetadata implements ConnectorMetadata {
                                 Function.identity(),
                                 table -> getTableHandle(session, table).columnMetadatas(catalog)));
     }
-
+    // ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column, ColumnPosition position
     @Override
     public void addColumn(
-            ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column) {
+            ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column, ColumnPosition position) {
         TrinoTableHandle trinoTableHandle = (TrinoTableHandle) tableHandle;
         Identifier identifier =
                 new Identifier(trinoTableHandle.getSchemaName(), trinoTableHandle.getTableName());
@@ -669,6 +654,7 @@ public class TrinoMetadata implements ConnectorMetadata {
                     new ConstraintApplicationResult<>(
                             trinoTableHandle.copy(trinoFilter.getFilter()),
                             trinoFilter.getRemainFilter(),
+                            constraint.getExpression(),
                             false));
         } else {
             return Optional.empty();
@@ -741,3 +727,4 @@ public class TrinoMetadata implements ConnectorMetadata {
         return Optional.of(new LimitApplicationResult<>(table, false, false));
     }
 }
+
