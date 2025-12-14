@@ -18,19 +18,37 @@
 
 package org.apache.paimon.trino.catalog;
 
+import io.trino.filesystem.Location;
+import org.apache.paimon.CoreOptions;
+import org.apache.paimon.PagedList;
+import org.apache.paimon.Snapshot;
 import org.apache.paimon.catalog.Catalog;
+import org.apache.paimon.catalog.CatalogLoader;
 import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.CatalogLockContext;
 import org.apache.paimon.catalog.CatalogFactory;
+import org.apache.paimon.catalog.CatalogLockFactory;
 import org.apache.paimon.catalog.Database;
 import org.apache.paimon.catalog.Identifier;
+import org.apache.paimon.catalog.TableMetadata;
+import org.apache.paimon.catalog.CatalogUtils;
 import org.apache.paimon.catalog.PropertyChange;
 import org.apache.paimon.fs.FileIO;
+import org.apache.paimon.fs.Path;
+import org.apache.paimon.function.Function;
+import org.apache.paimon.function.FunctionChange;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.partition.Partition;
+import org.apache.paimon.partition.PartitionStatistics;
+import org.apache.paimon.rest.exceptions.NoSuchResourceException;
+import org.apache.paimon.rest.responses.GetTableResponse;
 import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaChange;
+import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.security.SecurityContext;
+import org.apache.paimon.table.Instant;
 import org.apache.paimon.table.Table;
+import org.apache.paimon.table.TableSnapshot;
 import org.apache.paimon.trino.ClassLoaderUtils;
 import org.apache.paimon.trino.fileio.TrinoFileIOLoader;
 
@@ -39,21 +57,23 @@ import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.spi.connector.ConnectorSession;
 import org.apache.hadoop.conf.Configuration;
 
+import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /** Trino catalog, use it after set session. */
 public class TrinoCatalog implements Catalog {
 
     private final Options options;
-
     private final Configuration configuration;
-
     private final TrinoFileSystemFactory trinoFileSystemFactory;
-
     private Catalog current;
-
     private volatile boolean inited = false;
+    private CatalogContext catalogContext;
 
     public TrinoCatalog(
             Options options,
@@ -64,17 +84,20 @@ public class TrinoCatalog implements Catalog {
         this.trinoFileSystemFactory = trinoFileSystemFactory;
     }
 
-    public void initSession(ConnectorSession connectorSession) {
+    public boolean fileIOExists( ConnectorSession connectorSession,String path ) throws IOException {
+        TrinoFileSystem trinoFileSystem = trinoFileSystemFactory.create(connectorSession);
+        return trinoFileSystem.newInputFile(Location.of(path)).exists();
+    }
+
+    public void initSession(ConnectorSession connectorSession ) {
         if (!inited) {
             synchronized (this) {
                 if (!inited) {
                     current =
                             ClassLoaderUtils.runWithContextClassLoader(
                                     () -> {
-                                        TrinoFileSystem trinoFileSystem =
-                                                trinoFileSystemFactory.create(connectorSession);
-                                        CatalogContext catalogContext =
-                                                CatalogContext.create(
+                                        TrinoFileSystem trinoFileSystem = trinoFileSystemFactory.create(connectorSession);
+                                        catalogContext = CatalogContext.create(
                                                         options,
                                                         configuration,
                                                         new TrinoFileIOLoader(trinoFileSystem),
@@ -94,14 +117,6 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
-    public String warehouse() {
-        if (!inited) {
-            throw new RuntimeException("Not inited yet.");
-        }
-        return current.warehouse();
-    }
-
-    @Override
     public Map<String, String> options() {
         if (!inited) {
             throw new RuntimeException("Not inited yet.");
@@ -110,21 +125,24 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
+    public CatalogLoader catalogLoader() {
+        return null;
+    }
+
+    @Override
     public boolean caseSensitive() {
         return current.caseSensitive();
     }
 
     @Override
-    public FileIO fileIO() {
-        if (!inited) {
-            throw new RuntimeException("Not inited yet.");
-        }
-        return current.fileIO();
+    public List<String> listDatabases() {
+        return current.listDatabases();
     }
 
     @Override
-    public List<String> listDatabases() {
-        return current.listDatabases();
+    public PagedList<String> listDatabasesPaged(@Nullable Integer maxResults, @Nullable String pageToken, @Nullable String databaseNamePattern)  {
+
+        return current.listDatabasesPaged(maxResults, pageToken, databaseNamePattern);
     }
 
     @Override
@@ -161,6 +179,70 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
+    public PagedList<String> listTablesPaged(String databaseName, @Nullable Integer maxResults, @Nullable String pageToken, @Nullable String tableNamePattern, @Nullable String tableType) throws Catalog.DatabaseNotExistException {
+        try {
+            return current.listTablesPaged(databaseName, maxResults, pageToken, tableNamePattern, tableType);
+        } catch (NoSuchResourceException var7) {
+            throw new Catalog.DatabaseNotExistException(databaseName);
+        }
+    }
+    /*
+    private TableMetadata toTableMetadata(String db, GetTableResponse response) {
+        TableSchema schema = TableSchema.create(response.getSchemaId(), response.getSchema());
+        Map<String, String> options = new HashMap(schema.options());
+        options.put(CoreOptions.PATH.key(), response.getPath());
+        response.putAuditOptionsTo(options);
+        Identifier identifier = Identifier.create(db, response.getName());
+        if (identifier.getBranchName() != null) {
+            options.put(CoreOptions.BRANCH.key(), identifier.getBranchName());
+        }
+
+        return new TableMetadata(schema.copy(options), response.isExternal(), response.getId());
+    }
+    private Table toTable(String db, GetTableResponse response) {
+        Identifier identifier = Identifier.create(db, response.getName());
+
+        try {
+            return CatalogUtils.loadTable(this.current, identifier, (path) -> this.fileIOForData(path, identifier), this::fileIOFromOptions, (i) -> this.toTableMetadata(db, response), (CatalogLockFactory)null, (CatalogLockContext)null);
+        } catch (Catalog.TableNotExistException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    private FileIO fileIOForData(Path path, Identifier identifier) {
+        return this.fileIOFromOptions(path);
+    }
+    private FileIO fileIOFromOptions(Path path) {
+        try {
+            return FileIO.get(path, catalogContext);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+    private void createExternalTablePathIfNotExist(Schema schema) throws IOException {
+        Map<String, String> options = schema.options();
+        if (options.containsKey(CoreOptions.PATH.key())) {
+            Path path = new Path((String)options.get(CoreOptions.PATH.key()));
+
+            try (FileIO fileIO = this.fileIOFromOptions(path)) {
+                if (!fileIO.exists(path)) {
+                    fileIO.mkdirs(path);
+                }
+            }
+        }
+
+    }*/
+
+    @Override
+    public PagedList<Table> listTableDetailsPaged(String db, @Nullable Integer maxResults, @Nullable String pageToken, @Nullable String tableNamePattern, @Nullable String tableType) throws Catalog.DatabaseNotExistException {
+        try {
+            return current.listTableDetailsPaged(db, maxResults, pageToken, tableNamePattern, tableType);
+        } catch (NoSuchResourceException var7) {
+            throw new Catalog.DatabaseNotExistException(db);
+        }
+    }
+
+
+    @Override
     public void dropTable(Identifier identifier, boolean b) throws TableNotExistException {
         current.dropTable(identifier, b);
     }
@@ -184,20 +266,117 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
-    public void createPartition(Identifier identifier, Map<String, String> map)
-            throws TableNotExistException {
-        current.createPartition(identifier, map);
-    }
-
-    @Override
-    public void dropPartition(Identifier identifier, Map<String, String> partitions)
-            throws TableNotExistException, PartitionNotExistException {
-        current.dropPartition(identifier, partitions);
-    }
-
-    @Override
     public List<Partition> listPartitions(Identifier identifier) throws TableNotExistException {
         return current.listPartitions(identifier);
+    }
+
+    @Override
+    public PagedList<Partition> listPartitionsPaged(Identifier identifier, @Nullable Integer integer, @Nullable String s, @Nullable String s1) throws TableNotExistException {
+        return null;
+    }
+
+    @Override
+    public boolean supportsListObjectsPaged() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsVersionManagement() {
+        return false;
+    }
+
+    @Override
+    public boolean commitSnapshot(Identifier identifier, @Nullable String s, Snapshot snapshot, List<PartitionStatistics> list) throws TableNotExistException {
+        return false;
+    }
+
+    @Override
+    public Optional<TableSnapshot> loadSnapshot(Identifier identifier) throws TableNotExistException {
+        return current.loadSnapshot(identifier);
+    }
+
+    @Override
+    public Optional<Snapshot> loadSnapshot(Identifier identifier, String version) throws TableNotExistException {
+        return current.loadSnapshot(identifier,version);
+    }
+
+    @Override
+    public PagedList<Snapshot> listSnapshotsPaged(Identifier identifier, @Nullable Integer integer, @Nullable String s) throws TableNotExistException {
+        return null;
+    }
+
+    @Override
+    public void rollbackTo(Identifier identifier, Instant instant) throws TableNotExistException {
+        current.rollbackTo(identifier, instant);
+    }
+
+    @Override
+    public void createBranch(Identifier identifier, String s, @Nullable String s1) throws TableNotExistException, BranchAlreadyExistException, TagNotExistException {
+        current.createBranch(identifier, s, s1);
+    }
+
+    @Override
+    public void dropBranch(Identifier identifier, String s) throws BranchNotExistException {
+        current.dropBranch(identifier, s);
+    }
+
+    @Override
+    public void fastForward(Identifier identifier, String s) throws BranchNotExistException {
+        current.fastForward(identifier, s);
+    }
+
+    @Override
+    public List<String> listBranches(Identifier identifier) throws TableNotExistException {
+        return current.listBranches(identifier);
+    }
+
+    @Override
+    public void createPartitions(Identifier identifier, List<Map<String, String>> list) throws TableNotExistException {
+        current.createPartitions(identifier, list);
+    }
+
+    @Override
+    public void dropPartitions(Identifier identifier, List<Map<String, String>> list) throws TableNotExistException {
+        current.dropPartitions(identifier, list);
+    }
+
+    @Override
+    public void alterPartitions(Identifier identifier, List<PartitionStatistics> list) throws TableNotExistException {
+        current.alterPartitions(identifier, list);
+    }
+
+    @Override
+    public List<String> listFunctions(String databaseName) throws DatabaseNotExistException {
+        try {
+            return current.listFunctions(databaseName);
+        } catch (NoSuchResourceException e) {
+            throw new Catalog.DatabaseNotExistException(databaseName, e);
+        }
+    }
+
+    @Override
+    public Function getFunction(Identifier identifier) throws FunctionNotExistException {
+        return current.getFunction(identifier);
+    }
+
+    @Override
+    public void createFunction(Identifier identifier, Function function, boolean ignoreIfExists) throws FunctionAlreadyExistException, DatabaseNotExistException {
+        current.createFunction(identifier,function,ignoreIfExists);
+    }
+
+    @Override
+    public void dropFunction(Identifier identifier, boolean ignoreIfExists) throws FunctionNotExistException {
+        current.dropFunction(identifier,ignoreIfExists);
+    }
+
+    @Override
+    public void alterFunction(Identifier identifier, List<FunctionChange> list, boolean ignoreIfExists) throws FunctionNotExistException, DefinitionAlreadyExistException, DefinitionNotExistException {
+        current.alterFunction(identifier,list,ignoreIfExists);
+    }
+
+    @Override
+    public List<String> authTableQuery(Identifier identifier, @Nullable List<String> list) throws TableNotExistException {
+        return current.authTableQuery(identifier,list);
     }
 
     @Override
@@ -208,14 +387,17 @@ public class TrinoCatalog implements Catalog {
     }
 
     @Override
-    public void createDatabase(String name, boolean ignoreIfExists)
-            throws DatabaseAlreadyExistException {
+    public void createDatabase(String name, boolean ignoreIfExists) throws DatabaseAlreadyExistException {
         current.createDatabase(name, ignoreIfExists);
     }
 
     @Override
-    public void alterTable(Identifier identifier, SchemaChange change, boolean ignoreIfNotExists)
-            throws TableNotExistException, ColumnAlreadyExistException, ColumnNotExistException {
+    public void alterTable(Identifier identifier, SchemaChange change, boolean ignoreIfNotExists) throws TableNotExistException, ColumnAlreadyExistException, ColumnNotExistException {
         current.alterTable(identifier, change, ignoreIfNotExists);
+    }
+
+    @Override
+    public void markDonePartitions(Identifier identifier, List<Map<String, String>> list) throws TableNotExistException {
+        current.markDonePartitions(identifier, list);
     }
 }

@@ -79,12 +79,9 @@ public class FixedBucketTableShuffleFunction implements BucketFunction {
                 throw new RuntimeException(e);
             }
         }
-
         TrinoRow trinoRow = new TrinoRow(page.getSingleValuePage(position), RowKind.INSERT);
         BinaryRow pk = projectionContext.get().apply(trinoRow);
-        int bucket =
-                KeyAndBucketExtractor.bucket(
-                        KeyAndBucketExtractor.bucketKeyHashCode(pk), bucketCount);
+        int bucket =  Math.abs( pk.hashCode() % bucketCount);
         return bucket % workerCount;
     }
 }

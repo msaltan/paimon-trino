@@ -123,9 +123,9 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                         Set<String> rowIdFileds =
                                 ((io.trino.spi.type.RowType) rowId.get().getTrinoType())
                                         .getFields().stream()
-                                                .map(io.trino.spi.type.RowType.Field::getName)
-                                                .map(Optional::get)
-                                                .collect(Collectors.toSet());
+                                        .map(io.trino.spi.type.RowType.Field::getName)
+                                        .map(Optional::get)
+                                        .collect(Collectors.toSet());
 
                         HashMap<String, Integer> fieldToIndex = new HashMap<>();
                         for (int i = 0; i < dataColumns.size(); i++) {
@@ -202,10 +202,10 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                             IndexFile indexFile = indexFiles.get().get(i);
                             if (indexFile != null && paimonFilter.isPresent()) {
                                 try (FileIndexPredicate fileIndexPredicate =
-                                        new FileIndexPredicate(
-                                                new Path(indexFile.path()),
-                                                ((FileStoreTable) table).fileIO(),
-                                                rowType)) {
+                                             new FileIndexPredicate(
+                                                     new Path(indexFile.path()),
+                                                     ((FileStoreTable) table).fileIO(),
+                                                     rowType)) {
                                     if (!fileIndexPredicate.evaluate(paimonFilter.get()).remain()) {
                                         continue;
                                     }
@@ -225,11 +225,11 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                                         fileStoreTable.schema().id() == rawFile.schemaId()
                                                 ? projectedFields
                                                 : schemaEvolutionFieldNames(
-                                                        projectedFields,
-                                                        rowType.getFields(),
-                                                        schemaManager
-                                                                .schema(rawFile.schemaId())
-                                                                .fields()),
+                                                projectedFields,
+                                                rowType.getFields(),
+                                                schemaManager
+                                                        .schema(rawFile.schemaId())
+                                                        .fields()),
                                         type,
                                         orderDomains(projectedFields, filter));
 
@@ -334,34 +334,34 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
             List<Domain> domains) {
         switch (format) {
             case "orc":
-                {
-                    return createOrcDataPageSource(
-                            inputFile,
-                            // TODO: pass options from catalog configuration
-                            new OrcReaderOptions()
-                                    // Default tiny stripe size 8 M is too big for paimon.
-                                    // Cache stripe will cause more read (I want to read one column,
-                                    // but not the whole stripe)
-                                    .withTinyStripeThreshold(
-                                            DataSize.of(4, DataSize.Unit.KILOBYTE)),
-                            columns,
-                            types,
-                            domains);
-                }
+            {
+                return createOrcDataPageSource(
+                        inputFile,
+                        // TODO: pass options from catalog configuration
+                        new OrcReaderOptions()
+                                // Default tiny stripe size 8 M is too big for paimon.
+                                // Cache stripe will cause more read (I want to read one column,
+                                // but not the whole stripe)
+                                .withTinyStripeThreshold(
+                                        DataSize.of(4, DataSize.Unit.KILOBYTE)),
+                        columns,
+                        types,
+                        domains);
+            }
             case "parquet":
-                {
-                    // todo
-                    throw new RuntimeException("Unsupport file format: " + format);
-                }
+            {
+                // todo
+                throw new RuntimeException("Unsupport file format: " + format);
+            }
             case "avro":
-                {
-                    // todo
-                    throw new RuntimeException("Unsupport file format: " + format);
-                }
+            {
+                // todo
+                throw new RuntimeException("Unsupport file format: " + format);
+            }
             default:
-                {
-                    throw new RuntimeException("Unsupport file format: " + format);
-                }
+            {
+                throw new RuntimeException("Unsupport file format: " + format);
+            }
         }
     }
 

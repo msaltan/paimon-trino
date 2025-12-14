@@ -18,7 +18,31 @@
 
 package org.apache.paimon.trino;
 
-import io.trino.spi.connector.*;
+import io.trino.spi.connector.Assignment;
+import io.trino.spi.connector.ColumnHandle;
+import io.trino.spi.connector.ColumnMetadata;
+import io.trino.spi.connector.ColumnPosition;
+import io.trino.spi.connector.ConnectorInsertTableHandle;
+import io.trino.spi.connector.ConnectorMergeTableHandle;
+import io.trino.spi.connector.ConnectorMetadata;
+import io.trino.spi.connector.ConnectorOutputMetadata;
+import io.trino.spi.connector.ConnectorOutputTableHandle;
+import io.trino.spi.connector.ConnectorPartitioningHandle;
+import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.connector.ConnectorTableHandle;
+import io.trino.spi.connector.ConnectorTableLayout;
+import io.trino.spi.connector.ConnectorTableMetadata;
+import io.trino.spi.connector.ConnectorTableProperties;
+import io.trino.spi.connector.ConnectorTableVersion;
+import io.trino.spi.connector.Constraint;
+import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.LimitApplicationResult;
+import io.trino.spi.connector.ProjectionApplicationResult;
+import io.trino.spi.connector.RetryMode;
+import io.trino.spi.connector.RowChangeParadigm;
+import io.trino.spi.connector.SaveMode;
+import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.connector.SchemaTablePrefix;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.Identifier;
@@ -317,71 +341,55 @@ public class TrinoMetadata implements ConnectorMetadata {
             Type versionType = version.getVersionType();
             switch (version.getPointerType()) {
                 case TEMPORAL:
-                    {
-                        if (!(versionType instanceof TimestampWithTimeZoneType)) {
-                            throw new TrinoException(
-                                    NOT_SUPPORTED,
-                                    "Unsupported type for table version: "
-                                            + versionType.getDisplayName());
-                        }
-                        TimestampWithTimeZoneType timeZonedVersionType =
-                                (TimestampWithTimeZoneType) versionType;
-                        long epochMillis =
-                                timeZonedVersionType.isShort()
-                                        ? unpackMillisUtc((long) version.getVersion())
-                                        : ((LongTimestampWithTimeZone) version.getVersion())
-                                                .getEpochMillis();
-                        dynamicOptions.put(
-                                CoreOptions.SCAN_TIMESTAMP_MILLIS.key(),
-                                String.valueOf(epochMillis));
-                        break;
+                {
+                    if (!(versionType instanceof TimestampWithTimeZoneType)) {
+                        throw new TrinoException(
+                                NOT_SUPPORTED,
+                                "Unsupported type for table version: "
+                                        + versionType.getDisplayName());
                     }
+                    TimestampWithTimeZoneType timeZonedVersionType =
+                            (TimestampWithTimeZoneType) versionType;
+                    long epochMillis =
+                            timeZonedVersionType.isShort()
+                                    ? unpackMillisUtc((long) version.getVersion())
+                                    : ((LongTimestampWithTimeZone) version.getVersion())
+                                    .getEpochMillis();
+                    dynamicOptions.put(
+                            CoreOptions.SCAN_TIMESTAMP_MILLIS.key(),
+                            String.valueOf(epochMillis));
+                    break;
+                }
                 case TARGET_ID:
-                    {
-                        String tagOrVersion;
-                        if (versionType instanceof VarcharType) {
-                            tagOrVersion =
-                                    BinaryString.fromBytes(
-                                                    ((Slice) version.getVersion()).getBytes())
-                                            .toString();
-                        } else {
-                            tagOrVersion = version.getVersion().toString();
-                        }
-
-                        // if value is not number, set tag option
-                        boolean isNumber = StringUtils.isNumeric(tagOrVersion);
-                        if (!isNumber) {
-                            dynamicOptions.put(CoreOptions.SCAN_TAG_NAME.key(), tagOrVersion);
-                        } else {
-                            try {
-                                catalog.initSession(session);
-                                String path =
-                                        catalog.getTable(
-                                                        new Identifier(
-                                                                tableName.getSchemaName(),
-                                                                tableName.getTableName()))
-                                                .options()
-                                                .get("path");
-
-                                if (catalog.fileIO()
-                                        .exists(
-                                                new Path(
-                                                        path
-                                                                + "/tag/"
-                                                                + TAG_PREFIX
-                                                                + tagOrVersion))) {
-                                    dynamicOptions.put(
-                                            CoreOptions.SCAN_TAG_NAME.key(), tagOrVersion);
-                                } else {
-                                    dynamicOptions.put(
-                                            CoreOptions.SCAN_SNAPSHOT_ID.key(), tagOrVersion);
-                                }
-                            } catch (IOException | Catalog.TableNotExistException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                        break;
+                {
+                    String tagOrVersion;
+                    if (versionType instanceof VarcharType) {
+                        tagOrVersion =
+                                BinaryString.fromBytes(
+                                                ((Slice) version.getVersion()).getBytes())
+                                        .toString();
+                    } else {
+                        tagOrVersion = version.getVersion().toString();
                     }
+
+                    // if value is not number, set tag option
+                    boolean isNumber = StringUtils.isNumeric(tagOrVersion);
+                    if (!isNumber) {
+                        dynamicOptions.put(CoreOptions.SCAN_TAG_NAME.key(), tagOrVersion);
+                    } else {
+                        try {
+                            catalog.initSession(session);
+                            String path = catalog.getTable( new Identifier( tableName.getSchemaName(), tableName.getTableName())) .options() .get("path");
+                            if (catalog.fileIOExists(session,new Path( path + "/tag/" + TAG_PREFIX  + tagOrVersion).toString()))
+                            {
+                                dynamicOptions.put( CoreOptions.SCAN_TAG_NAME.key(), tagOrVersion);
+                            }
+                        } catch ( IOException | Catalog.TableNotExistException e) {
+                            dynamicOptions.put( CoreOptions.SCAN_SNAPSHOT_ID.key(), tagOrVersion);
+                        }
+                    }
+                    break;
+                }
             }
         }
         return getTableHandle(session, tableName, dynamicOptions);

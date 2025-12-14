@@ -97,9 +97,8 @@ public class TableChangesFunction extends AbstractConnectorTableFunction {
                                 .name(INCREMENTAL_BETWEEN_SCAN_MODE)
                                 .defaultValue(
                                         Slices.utf8Slice(
-                                                CoreOptions.INCREMENTAL_BETWEEN_SCAN_MODE
-                                                        .defaultValue()
-                                                        .getValue()))
+                                                String.valueOf(CoreOptions.INCREMENTAL_BETWEEN_SCAN_MODE
+                                                        .defaultValue())))
                                 .type(VARCHAR)
                                 .build(),
                         ScalarArgumentSpecification.builder()
@@ -192,9 +191,9 @@ public class TableChangesFunction extends AbstractConnectorTableFunction {
     private static String getSchemaName(Map<String, Argument> arguments) {
         if (argumentExists(arguments, SCHEMA_NAME_VAR_NAME)) {
             return ((Slice)
-                            checkNonNull(
-                                    ((ScalarArgument) arguments.get(SCHEMA_NAME_VAR_NAME))
-                                            .getValue()))
+                    checkNonNull(
+                            ((ScalarArgument) arguments.get(SCHEMA_NAME_VAR_NAME))
+                                    .getValue()))
                     .toStringUtf8();
         }
         throw new TrinoException(
@@ -204,9 +203,9 @@ public class TableChangesFunction extends AbstractConnectorTableFunction {
     private static String getTableName(Map<String, Argument> arguments) {
         if (argumentExists(arguments, TABLE_NAME_VAR_NAME)) {
             return ((Slice)
-                            checkNonNull(
-                                    ((ScalarArgument) arguments.get(TABLE_NAME_VAR_NAME))
-                                            .getValue()))
+                    checkNonNull(
+                            ((ScalarArgument) arguments.get(TABLE_NAME_VAR_NAME))
+                                    .getValue()))
                     .toStringUtf8();
         }
         throw new TrinoException(
