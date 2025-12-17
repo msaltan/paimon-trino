@@ -59,7 +59,7 @@ public class TableChangesFunctionProcessor implements TableFunctionSplitProcesso
         if (pageSource.isFinished()) {
             return FINISHED;
         }
-        Page dataPage = pageSource.getNextPage();
+        Page dataPage = pageSource.getNextSourcePage().getPage();
         if (dataPage == null) {
             return TableFunctionProcessorState.Processed.produced(EMPTY_PAGE);
         } else {

@@ -335,7 +335,7 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
         switch (format) {
             case "orc":
             {
-                return createOrcDataPageSource(
+                /*return createOrcDataPageSource(
                         inputFile,
                         // TODO: pass options from catalog configuration
                         new OrcReaderOptions()
@@ -346,7 +346,8 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
                                         DataSize.of(4, DataSize.Unit.KILOBYTE)),
                         columns,
                         types,
-                        domains);
+                        domains);*/
+                throw new RuntimeException("Unsupport file format: " + format);
             }
             case "parquet":
             {
@@ -364,7 +365,7 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
             }
         }
     }
-
+    /*--ms--
     private ConnectorPageSource createOrcDataPageSource(
             TrinoInputFile inputFile,
             OrcReaderOptions options,
@@ -429,5 +430,5 @@ public class TrinoPageSourceProvider implements ConnectorPageSourceProvider {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
+    }*/
 }

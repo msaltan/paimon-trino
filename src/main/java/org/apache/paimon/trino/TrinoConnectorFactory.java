@@ -35,7 +35,6 @@ import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorMetadata;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorPageSinkProvider;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorPageSourceProvider;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitManager;
-import io.trino.plugin.hive.NodeVersion;
 import io.trino.plugin.hive.orc.OrcReaderConfig;
 import io.trino.spi.classloader.ThreadContextClassLoader;
 import io.trino.spi.connector.Connector;
@@ -108,10 +107,10 @@ public class TrinoConnectorFactory implements ConnectorFactory {
                             new HdfsAuthenticationModule(),
                             // bind the trino file system module
                             newFileSystemModule(catalogName, context),
-                            binder -> {
-                                binder.bind(NodeVersion.class)
+                            /*--ms--binder -> {
+                                binder.bind(io.trino.spi.NodeVersion.class)
                                         .toInstance(
-                                                new NodeVersion(
+                                                new io.trino.spi.NodeVersion(
                                                         context.getNodeManager()
                                                                 .getCurrentNode()
                                                                 .getVersion()));
@@ -121,7 +120,7 @@ public class TrinoConnectorFactory implements ConnectorFactory {
                                 binder.bind(Tracer.class).toInstance(context.getTracer());
                                 binder.bind(OrcReaderConfig.class)
                                         .toInstance(new OrcReaderConfig());
-                            },
+                            },*/
                             module);
 
             Injector injector =

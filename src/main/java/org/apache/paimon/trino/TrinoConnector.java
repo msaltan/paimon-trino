@@ -118,6 +118,11 @@ public class TrinoConnector implements Connector {
     }
 
     @Override
+    public void shutdown() {
+
+    }
+
+    @Override
     public ConnectorNodePartitioningProvider getNodePartitioningProvider() {
         return trinoNodePartitioningProvider;
     }
